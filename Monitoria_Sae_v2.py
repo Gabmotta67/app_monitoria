@@ -4,6 +4,7 @@ import pandas as pd
 import psycopg2
 from sqlalchemy import create_engine
 import streamlit as st
+import os
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO
@@ -83,55 +84,84 @@ def reset_formulario():
     st.session_state.pending_data = None
     st.session_state.form_version += 1
 
-# ==========================================
-# CARREGAMENTO DE DADOS EXTERNOS (CSV REDE)
-# ==========================================
+
+
 @st.cache_data(ttl=3600)
 def carregar_colaboradores():
     caminho_csv = r"\\172.30.100.44\sae\RELATORIOS GERENCIAIS\MIS RP\ARQUIVOS_GRACIMARA\BD_PESSOAS.csv"
     
-    try:
-        df_pessoas = None
-        # Tenta ler testando os delimitadores e encodings mais comuns
-        for sep in [";", ",", "\t"]:
-            for enc in ["utf-8-sig", "latin1", "cp1252"]:
-                try:
-                    df_temp = pd.read_csv(caminho_csv, sep=sep, encoding=enc)
-                    # Limpa espaços em branco nos nomes das colunas
-                    df_temp.columns = df_temp.columns.str.strip()
-                    
-                    # Procura pela coluna ignorando maiúsculas/minúsculas
-                    colunas_upper = [c.upper() for c in df_temp.columns]
-                    if "NOME_BASE_VOLUMETRIA_POWER_BI" in colunas_upper:
-                        df_pessoas = df_temp
-                        # Ajusta o nome real da coluna encontrada
-                        idx = colunas_upper.index("NOME_BASE_VOLUMETRIA_POWER_BI")
-                        col_alvo = df_temp.columns[idx]
-                        break
-                except Exception:
-                    continue
-            if df_pessoas is not None:
-                break
-
-        if df_pessoas is not None and col_alvo in df_pessoas.columns:
-            nomes = (
-                df_pessoas[col_alvo]
-                .dropna()
-                .astype(str)
-                .str.strip()
-                .unique()
-            )
-            nomes = sorted([n for n in nomes if n != "" and n.lower() != "nan"])
-            return ["Selecione..."] + nomes
-        else:
-            # Mostra no console/aviso quais colunas ele encontrou para ajudar no diagnóstico
-            cols_encontradas = ", ".join(df_temp.columns) if 'df_temp' in locals() else "Nenhuma"
-            st.warning(f"Coluna 'NOME_BASE_VOLUMETRIA_POWER_BI' não encontrada. Colunas lidas: [{cols_encontradas}]")
-            return ["Selecione..."]
-
-    except Exception as e:
-        st.error(f"Erro ao carregar o arquivo CSV: {e}")
+    if not os.path.exists(caminho_csv):
+        st.error(f"Arquivo não encontrado no caminho: {caminho_csv}")
         return ["Selecione..."]
+
+    df_pessoas = None
+    col_alvo = None
+    
+    # Delimitadores e encodings mais comuns em bases legadas/Windows
+    delimitadores = [";", ",", "\t", "|"]
+    encodings = ["utf-8-sig", "latin1", "cp1252", "utf-8"]
+
+    for sep in delimitadores:
+        for enc in encodings:
+            try:
+                # Tenta ler apenas as primeiras linhas para validação rápida
+                df_temp = pd.read_csv(
+                    caminho_csv, 
+                    sep=sep, 
+                    encoding=enc, 
+                    on_bad_lines='skip',
+                    engine='python'
+                )
+                
+                # Normaliza nomes das colunas (remove espaços extras e caracteres invisíveis)
+                df_temp.columns = (
+                    df_temp.columns
+                    .astype(str)
+                    .str.replace('\ufeff', '', regex=False)
+                    .str.strip()
+                )
+                
+                # Mapeia colunas em maiúsculo
+                colunas_upper = [c.upper() for c in df_temp.columns]
+                
+                if "NOME_BASE_VOLUMETRIA_POWER_BI" in colunas_upper:
+                    df_pessoas = df_temp
+                    idx = colunas_upper.index("NOME_BASE_VOLUMETRIA_POWER_BI")
+                    col_alvo = df_temp.columns[idx]
+                    break
+            except Exception:
+                continue
+        if df_pessoas is not None:
+            break
+
+    # Trata os dados se a coluna foi encontrada
+    if df_pessoas is not None and col_alvo:
+        nomes = (
+            df_pessoas[col_alvo]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .unique()
+        )
+        # Filtra sujeiras comuns de conversão
+        nomes_validos = sorted([
+            n for n in nomes 
+            if n != "" and n.lower() not in ["nan", "none", "null"]
+        ])
+        return ["Selecione..."] + nomes_validos
+
+    # Se falhar, exibe diagnósticos para identificar a causa exata
+    try:
+        # Lê as primeiras linhas puras do arquivo para mostrar na tela
+        with open(caminho_csv, 'r', encoding='latin1') as f:
+            primeiras_linhas = [f.readline().strip() for _ in range(3)]
+        
+        st.warning("⚠️ Não foi possível localizar a coluna `NOME_BASE_VOLUMETRIA_POWER_BI`.")
+        st.info(f"**Prévia das primeiras linhas puras do arquivo:**\n```text\n" + "\n".join(primeiras_linhas) + "\n```")
+    except Exception as e:
+        st.error(f"Erro ao tentar ler o arquivo na rede: {e}")
+
+    return ["Selecione..."]
     
 # ==========================================
 # CONEXÃO COM O BANCO DE DADOS POSTGRESQL
