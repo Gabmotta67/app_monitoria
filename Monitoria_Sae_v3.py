@@ -513,7 +513,8 @@ with tab_formulario:
         "JEAN ROBERTO DA SILVA DOS SANTOS",
         "LISANDRA OLIVEIRA LIMA DA SILVA",
         "BRUNA CAROLINE RIBEIRO DA SILVA",
-        "ANA LARISSA SOARES MARTINS",
+        "ANA LARISSA SOARES MARTINS"
+        "LAURA MARIA ZAMPIERI",
     ]
 
     val_avaliador = payload_edicao.get("avaliador", "JEAN ROBERTO DA SILVA DOS SANTOS")
