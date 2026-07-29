@@ -1,6 +1,6 @@
 import datetime
 import os
-import pandas as pd  # <--- Adicionado
+import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 
@@ -74,6 +74,8 @@ if "pending_data" not in st.session_state:
     st.session_state.pending_data = None
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
+if "notification" not in st.session_state:
+    st.session_state.notification = None
 
 
 def reset_formulario():
@@ -83,14 +85,31 @@ def reset_formulario():
     st.session_state.form_version += 1
 
 
+def exibir_notificacoes_pendentes():
+    """Exibe apenas a notificação flutuante (Toast) e limpa a memória."""
+    if st.session_state.notification:
+        notif = st.session_state.notification
+        mensagem = notif.get("message", "")
+        icone = notif.get("icon", "ℹ️")
+
+        # Exibe apenas o Toast flutuante
+        st.toast(mensagem, icon=icone)
+
+        # Limpa o estado da notificação
+        st.session_state.notification = None
+
+
+# Exibe notificações assim que a página renderiza
+exibir_notificacoes_pendentes()
+
+
 # ==========================================
-# CONEXÃO COM O SUPABASE (CORRIGIDA)
+# CONEXÃO COM O SUPABASE
 # ==========================================
 @st.cache_resource
 def get_supabase_client() -> Client:
     """Inicializa e faz cache da conexão com o cliente Supabase."""
     try:
-        # Credenciais passadas diretamente como string
         url = "https://kgfbaomoxmmyfzzjlwys.supabase.co"
         key = "sb_publishable_HW6-_YedgZMlwGj6lKFwSQ_qez-bLEz"
         return create_client(url, key)
@@ -395,13 +414,13 @@ CRITERIOS_OBLIGATORIOS = [
 
 
 # ==========================================
-# POP-UP / MODAL DE CONFIRMAÇÃO DIALOG (AJUSTADO)
+# MODAL DE CONFIRMAÇÃO DIALOG COM NOTIFICAÇÕES (UX OTIMIZADA)
 # ==========================================
 @st.dialog("Confirmar Gravação da Monitoria")
 def modal_confirmacao():
     dados = st.session_state.pending_data
 
-    st.warning("Verifique as informações abaixo antes de salvar no Supabase:")
+    st.warning("Verifique as informações abaixo antes de salvar:")
     st.markdown(f"**Colaborador:** {dados['colaborador']}")
     st.markdown(f"**Pontuação:** `{dados['pontuacao']} / 100`")
     st.markdown(f"**Status Final:** **{dados['status_resultado']}**")
@@ -411,14 +430,32 @@ def modal_confirmacao():
     if col_sim.button("✅ Confirmar e Salvar", use_container_width=True):
         try:
             salvar_registro(dados, id_registro=st.session_state.editing_id)
-            st.success("Monitoria gravada com sucesso no Supabase!")
+            
+            # Registra notificação de SUCESSO para o próximo rerun
+            st.session_state.notification = {
+                "type": "success",
+                "message": f"Monitoria do colaborador '{dados['colaborador']}' salva com sucesso!",
+                "icon": "🎉"
+            }
+            
             reset_formulario()
             st.rerun()
         except Exception as e:
-            st.error(f"Erro ao gravar no banco: {e}")
+            # Registra notificação de ERRO
+            st.session_state.notification = {
+                "type": "error",
+                "message": f"Falha ao salvar a monitoria no Supabase: {str(e)}",
+                "icon": "❌"
+            }
+            st.rerun()
 
     if col_nao.button("❌ Cancelar", use_container_width=True):
         st.session_state.pending_data = None
+        st.session_state.notification = {
+            "type": "warning",
+            "message": "Gravação cancelada pelo usuário. Os dados não foram salvos.",
+            "icon": "⚠️"
+        }
         st.rerun()
 
 
@@ -426,7 +463,7 @@ def modal_confirmacao():
 # NAVEGAÇÃO DE ABAS
 # ==========================================
 st.markdown(
-    '<div class="header-bar">Ficha de Monitoração PME</div>',
+    '<div class="header-bar">Ficha de Monitoração Chat PME</div>',
     unsafe_allow_html=True,
 )
 tab_formulario, tab_resultados = st.tabs(
@@ -442,6 +479,11 @@ with tab_formulario:
     if st.session_state.editing_id:
         st.info(f"✏️ Editando registro ID: **{st.session_state.editing_id}**")
         if st.button("⬅️ Cancelar Edição", key=f"btn_cancel_edit_{v}"):
+            st.session_state.notification = {
+                "type": "info",
+                "message": "Edição cancelada. Formulário reiniciado.",
+                "icon": "ℹ️"
+            }
             reset_formulario()
             st.rerun()
 
@@ -478,7 +520,7 @@ with tab_formulario:
         format="DD/MM/YYYY",
         key=f"dt_audicao_{v}",
     )
-    canal = l3_col3.selectbox("Canal:", ["Gravação", "Chat", "WhatsApp"], key=f"canal_{v}")
+    canal = l3_col3.selectbox("Canal:", ["Descrição", "Calibração", "In Loco"], key=f"canal_{v}")
 
     l4_col1, l4_col2, l4_col3 = st.columns([1.5, 1.5, 3])
     telefone = l4_col1.text_input(
@@ -604,13 +646,20 @@ with tab_formulario:
     b_col1, b_col2, b_col3 = st.columns([6, 2, 2])
 
     if b_col2.button("❌ Cancelar", use_container_width=True, key=f"btn_cancel_{v}"):
+        st.session_state.notification = {
+            "type": "warning",
+            "message": "Formulário limpo com sucesso.",
+            "icon": "🧹"
+        }
         reset_formulario()
         st.rerun()
 
     if b_col3.button("💾 Cadastrar / Salvar", use_container_width=True, key=f"btn_save_{v}"):
         if avaliador == "Selecione...":
+            st.toast("Por favor, selecione um Avaliador!", icon="⚠️")
             st.error("Por favor, selecione um Avaliador antes de salvar!")
         elif colaborador == "Selecione...":
+            st.toast("Por favor, selecione um Colaborador!", icon="⚠️")
             st.error("Por favor, selecione um Colaborador antes de salvar!")
         else:
             st.session_state.pending_data = {
@@ -653,9 +702,18 @@ with tab_resultados:
             if st.button("Confirmar Exclusão"):
                 try:
                     excluir_registro(id_excluir)
-                    st.success(f"Registro {id_excluir} excluído!")
+                    st.session_state.notification = {
+                        "type": "success",
+                        "message": f"Registro ID {id_excluir} excluído com sucesso!",
+                        "icon": "🗑️"
+                    }
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao excluir: {e}")
+                    st.session_state.notification = {
+                        "type": "error",
+                        "message": f"Erro ao excluir o registro ID {id_excluir}: {e}",
+                        "icon": "❌"
+                    }
+                    st.rerun()
     else:
         st.info("Nenhum registro de monitoria encontrado no Supabase.")
