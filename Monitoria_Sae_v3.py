@@ -67,9 +67,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Initialize Session State Variables
+# Inicialização dos estados da sessão
 if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
+if "edit_payload" not in st.session_state:
+    st.session_state.edit_payload = None
 if "pending_data" not in st.session_state:
     st.session_state.pending_data = None
 if "form_version" not in st.session_state:
@@ -81,25 +83,21 @@ if "notification" not in st.session_state:
 def reset_formulario():
     """Limpa os dados pendentes, sai do modo de edição e reseta a versão dos inputs."""
     st.session_state.editing_id = None
+    st.session_state.edit_payload = None
     st.session_state.pending_data = None
     st.session_state.form_version += 1
 
 
 def exibir_notificacoes_pendentes():
-    """Exibe apenas a notificação flutuante (Toast) e limpa a memória."""
+    """Exibe notificações no formato Toast flutuante."""
     if st.session_state.notification:
         notif = st.session_state.notification
         mensagem = notif.get("message", "")
         icone = notif.get("icon", "ℹ️")
-
-        # Exibe apenas o Toast flutuante
         st.toast(mensagem, icon=icone)
-
-        # Limpa o estado da notificação
         st.session_state.notification = None
 
 
-# Exibe notificações assim que a página renderiza
 exibir_notificacoes_pendentes()
 
 
@@ -108,7 +106,6 @@ exibir_notificacoes_pendentes()
 # ==========================================
 @st.cache_resource
 def get_supabase_client() -> Client:
-    """Inicializa e faz cache da conexão com o cliente Supabase."""
     try:
         url = "https://kgfbaomoxmmyfzzjlwys.supabase.co"
         key = "sb_publishable_HW6-_YedgZMlwGj6lKFwSQ_qez-bLEz"
@@ -119,45 +116,55 @@ def get_supabase_client() -> Client:
 
 
 @st.cache_data(ttl=3600)
-def carregar_colaboradores():
-    """Busca a lista de colaboradores diretamente da tabela bd_pessoas no Supabase."""
+def carregar_dados_colaboradores():
     try:
         supabase = get_supabase_client()
         if not supabase:
-            return ["Selecione..."]
+            return ["Selecione..."], {}
 
         response = (
             supabase.table("bd_pessoas")
-            .select("nome_base_volumetria_power_bi")
+            .select("nome_base_volumetria_power_bi, supervisor")
             .execute()
         )
 
         data = response.data
         if not data:
-            st.warning("⚠️ Nenhum registro encontrado na tabela 'bd_pessoas'.")
-            return ["Selecione..."]
+            return ["Selecione..."], {}
 
         df_temp = pd.DataFrame(data)
-        if "nome_base_volumetria_power_bi" in df_temp.columns:
-            nomes = (
-                df_temp["nome_base_volumetria_power_bi"]
-                .dropna()
-                .astype(str)
-                .str.strip()
-                .unique()
+        if (
+            "nome_base_volumetria_power_bi" in df_temp.columns
+            and "supervisor" in df_temp.columns
+        ):
+            df_temp = df_temp.dropna(subset=["nome_base_volumetria_power_bi"])
+            df_temp["nome_clean"] = (
+                df_temp["nome_base_volumetria_power_bi"].astype(str).str.strip()
             )
-            nomes_validos = sorted([
-                n for n in nomes
-                if n != "" and n.lower() not in ["nan", "none", "null"]
-            ])
-            return ["Selecione..."] + nomes_validos
-        else:
-            st.warning("⚠️ Coluna 'nome_base_volumetria_power_bi' não encontrada no resultado.")
-            return ["Selecione..."]
+            df_temp["supervisor_clean"] = (
+                df_temp["supervisor"].fillna("").astype(str).str.strip()
+            )
+
+            df_valid = df_temp[
+                (df_temp["nome_clean"] != "")
+                & (
+                    ~df_temp["nome_clean"]
+                    .str.lower()
+                    .isin(["nan", "none", "null"])
+                )
+            ]
+
+            mapa_supervisores = dict(
+                zip(df_valid["nome_clean"], df_valid["supervisor_clean"])
+            )
+            nomes_validos = sorted(df_valid["nome_clean"].unique())
+
+            return ["Selecione..."] + nomes_validos, mapa_supervisores
+        return ["Selecione..."], {}
 
     except Exception as e:
         st.error(f"Erro ao buscar colaboradores no Supabase: {e}")
-        return ["Selecione..."]
+        return ["Selecione..."], {}
 
 
 def salvar_registro(dados, id_registro=None):
@@ -188,8 +195,13 @@ def salvar_registro(dados, id_registro=None):
     if id_registro is None:
         res = supabase.table("monitoria_whatsapp").insert(payload).execute()
     else:
-        res = supabase.table("monitoria_whatsapp").update(payload).eq("id", id_registro).execute()
-    
+        res = (
+            supabase.table("monitoria_whatsapp")
+            .update(payload)
+            .eq("id", id_registro)
+            .execute()
+        )
+
     return res
 
 
@@ -206,9 +218,7 @@ def buscar_registros():
             .execute()
         )
         data = response.data
-        if data:
-            return pd.DataFrame(data)
-        return pd.DataFrame()
+        return pd.DataFrame(data) if data else pd.DataFrame()
     except Exception as e:
         st.error(f"Erro ao consultar o Supabase: {e}")
         return pd.DataFrame()
@@ -217,7 +227,9 @@ def buscar_registros():
 def excluir_registro(id_registro):
     supabase = get_supabase_client()
     if supabase:
-        supabase.table("monitoria_whatsapp").delete().eq("id", id_registro).execute()
+        supabase.table("monitoria_whatsapp").delete().eq(
+            "id", id_registro
+        ).execute()
 
 
 # ==========================================
@@ -414,7 +426,7 @@ CRITERIOS_OBLIGATORIOS = [
 
 
 # ==========================================
-# MODAL DE CONFIRMAÇÃO DIALOG COM NOTIFICAÇÕES (UX OTIMIZADA)
+# MODAL DE CONFIRMAÇÃO DIALOG
 # ==========================================
 @st.dialog("Confirmar Gravação da Monitoria")
 def modal_confirmacao():
@@ -430,22 +442,23 @@ def modal_confirmacao():
     if col_sim.button("✅ Confirmar e Salvar", use_container_width=True):
         try:
             salvar_registro(dados, id_registro=st.session_state.editing_id)
-            
-            # Registra notificação de SUCESSO para o próximo rerun
+            msg_sucesso = (
+                f"Monitoria ID {st.session_state.editing_id} atualizada com sucesso!"
+                if st.session_state.editing_id
+                else f"Monitoria do colaborador '{dados['colaborador']}' salva com sucesso!"
+            )
             st.session_state.notification = {
                 "type": "success",
-                "message": f"Monitoria do colaborador '{dados['colaborador']}' salva com sucesso!",
-                "icon": "🎉"
+                "message": msg_sucesso,
+                "icon": "🎉",
             }
-            
             reset_formulario()
             st.rerun()
         except Exception as e:
-            # Registra notificação de ERRO
             st.session_state.notification = {
                 "type": "error",
                 "message": f"Falha ao salvar a monitoria no Supabase: {str(e)}",
-                "icon": "❌"
+                "icon": "❌",
             }
             st.rerun()
 
@@ -454,7 +467,7 @@ def modal_confirmacao():
         st.session_state.notification = {
             "type": "warning",
             "message": "Gravação cancelada pelo usuário. Os dados não foram salvos.",
-            "icon": "⚠️"
+            "icon": "⚠️",
         }
         st.rerun()
 
@@ -475,68 +488,128 @@ tab_formulario, tab_resultados = st.tabs(
 # ------------------------------------------
 with tab_formulario:
     v = st.session_state.form_version
+    payload_edicao = st.session_state.edit_payload or {}
 
     if st.session_state.editing_id:
-        st.info(f"✏️ Editando registro ID: **{st.session_state.editing_id}**")
-        if st.button("⬅️ Cancelar Edição", key=f"btn_cancel_edit_{v}"):
+        st.info(
+            f"✏️ **Modo Edição Ativo:** Editando o registro **ID #{st.session_state.editing_id}**"
+        )
+        if st.button("⬅️ Sair da Edição e Limpar Formulário", key=f"btn_cancel_edit_{v}"):
+            reset_formulario()
             st.session_state.notification = {
                 "type": "info",
                 "message": "Edição cancelada. Formulário reiniciado.",
-                "icon": "ℹ️"
+                "icon": "ℹ️",
             }
-            reset_formulario()
             st.rerun()
+
+    # Carrega colaboradores
+    colaboradores, mapa_supervisores = carregar_dados_colaboradores()
 
     l1_col1, l1_col2, l1_col3 = st.columns(3)
 
-    avaliadores = ["Selecione...", "JEAN ROBERTO DA SILVA DOS SANTOS"]
-    avaliador = l1_col1.selectbox("Avaliador *:", avaliadores, index=1, key=f"avaliador_{v}")
-    operacao = l1_col2.text_input("Operação:", value="PME", key=f"operacao_{v}")
-    gestor = l1_col3.text_input("Gestor:", value="DANIEL PIMENTA NEVES", key=f"gestor_{v}")
+    avaliadores = [
+        "Selecione...",
+        "JEAN ROBERTO DA SILVA DOS SANTOS",
+        "LISANDRA OLIVEIRA LIMA DA SILVA",
+        "BRUNA CAROLINE RIBEIRO DA SILVA",
+        "ANA LARISSA SOARES MARTINS",
+    ]
 
-    l2_col1, l2_col2, l2_col3, l2_col4 = st.columns([3, 1.5, 1, 1])
-    colaboradores = carregar_colaboradores()
-    colaborador = l2_col1.selectbox("Colaborador *:", colaboradores, key=f"colaborador_{v}")
-    duracao = l2_col2.selectbox(
-        "Duração:", ["00:05", "00:10", "00:15", "00:20", "00:30"], key=f"duracao_{v}"
-    )
-    hr_inicio = l2_col3.selectbox(
-        "Hora Início:", [f"{h:02d}" for h in range(24)], index=9, key=f"hr_inicio_{v}"
-    )
-    min_inicio = l2_col4.selectbox(
-        "Minuto Início:", [f"{m:02d}" for m in range(60)], index=0, key=f"min_inicio_{v}"
-    )
+    val_avaliador = payload_edicao.get("avaliador", "JEAN ROBERTO DA SILVA DOS SANTOS")
+    idx_avaliador = avaliadores.index(val_avaliador) if val_avaliador in avaliadores else 1
+
+    avaliador = l1_col1.selectbox("Avaliador *:", avaliadores, index=idx_avaliador, key=f"avaliador_{v}")
+
+    val_colaborador = payload_edicao.get("colaborador", "Selecione...")
+    idx_colaborador = colaboradores.index(val_colaborador) if val_colaborador in colaboradores else 0
+
+    colaborador = l1_col2.selectbox("Colaborador *:", colaboradores, index=idx_colaborador, key=f"colaborador_{v}")
+
+    gestor_dinamico = payload_edicao.get("gestor", mapa_supervisores.get(colaborador, "DANIEL PIMENTA NEVES"))
+    gestor = l1_col3.text_input("Gestor:", value=gestor_dinamico, key=f"gestor_{v}_{colaborador}")
+
+    l2_col1, l2_col2, l2_col3, l2_col4 = st.columns([1.5, 1.5, 1, 1])
+
+    operacao = l2_col1.text_input("Operação:", value=payload_edicao.get("operacao", "PME"), key=f"operacao_{v}")
+
+    opcoes_duracao = ["00:05", "00:10", "00:15", "00:20", "00:30"]
+    val_duracao = payload_edicao.get("duracao", "00:05")
+    idx_duracao = opcoes_duracao.index(val_duracao) if val_duracao in opcoes_duracao else 0
+
+    duracao = l2_col2.selectbox("Duração:", opcoes_duracao, index=idx_duracao, key=f"duracao_{v}")
+
+    opcoes_hr = [f"{h:02d}" for h in range(24)]
+    val_hr = str(payload_edicao.get("hora_inicio", "09")).zfill(2)
+    idx_hr = opcoes_hr.index(val_hr) if val_hr in opcoes_hr else 9
+
+    hr_inicio = l2_col3.selectbox("Hora Início:", opcoes_hr, index=idx_hr, key=f"hr_inicio_{v}")
+
+    opcoes_min = [f"{m:02d}" for m in range(60)]
+    val_min = str(payload_edicao.get("minuto_inicio", "00")).zfill(2)
+    idx_min = opcoes_min.index(val_min) if val_min in opcoes_min else 0
+
+    min_inicio = l2_col4.selectbox("Minuto Início:", opcoes_min, index=idx_min, key=f"min_inicio_{v}")
 
     l3_col1, l3_col2, l3_col3 = st.columns(3)
+
+    dt_lig_val = (
+        datetime.datetime.strptime(payload_edicao["data_ligacao"], "%Y-%m-%d").date()
+        if "data_ligacao" in payload_edicao and payload_edicao["data_ligacao"]
+        else datetime.date.today()
+    )
+    dt_aud_val = (
+        datetime.datetime.strptime(payload_edicao["data_audicao"], "%Y-%m-%d").date()
+        if "data_audicao" in payload_edicao and payload_edicao["data_audicao"]
+        else datetime.date.today()
+    )
+
     data_ligacao = l3_col1.date_input(
         label="Data da Ligação *",
-        value=datetime.date.today(),
+        value=dt_lig_val,
         format="DD/MM/YYYY",
         key=f"dt_ligacao_{v}",
     )
     data_audicao = l3_col2.date_input(
         label="Data da Audição *",
-        value=datetime.date.today(),
+        value=dt_aud_val,
         format="DD/MM/YYYY",
         key=f"dt_audicao_{v}",
     )
-    canal = l3_col3.selectbox("Canal:", ["Descrição", "Calibração", "In Loco"], key=f"canal_{v}")
+
+    opcoes_canal = ["Interação WPP", "Calibração"]
+    val_canal = payload_edicao.get("canal", "Interação WPP")
+    idx_canal = opcoes_canal.index(val_canal) if val_canal in opcoes_canal else 0
+
+    canal = l3_col3.selectbox("Canal:", opcoes_canal, index=idx_canal, key=f"canal_{v}")
 
     l4_col1, l4_col2, l4_col3 = st.columns([1.5, 1.5, 3])
     telefone = l4_col1.text_input(
-        label="Telefone Chamador *", placeholder="(16) 99999-9999", key=f"tel_{v}"
+        label="Telefone Chamador *",
+        value=payload_edicao.get("telefone", ""),
+        placeholder="(16) 99999-9999",
+        key=f"tel_{v}",
     )
     cnpj = l4_col2.text_input(
-        label="CNPJ *", placeholder="00.000.000/0001-00", key=f"cnpj_{v}"
+        label="CNPJ *",
+        value=payload_edicao.get("cnpj", ""),
+        placeholder="00.000.000/0001-00",
+        key=f"cnpj_{v}",
     )
     assunto = l4_col3.text_input(
-        label="Assunto *", placeholder="Ex: Segunda via de boleto...", key=f"assunto_{v}"
+        label="Assunto *",
+        value=payload_edicao.get("assunto", ""),
+        placeholder="Ex: Segunda via de boleto...",
+        key=f"assunto_{v}",
     )
 
     st.markdown("---")
 
     respostas = {}
+    respostas_salvas = payload_edicao.get("respostas", {})
     col_left, col_right = st.columns(2)
+
+    options_radio = ["Conforme", "Não Conforme", "Não se aplica"]
 
     with col_left:
         for categoria in [
@@ -552,10 +625,13 @@ with tab_formulario:
             for idx, item in enumerate(itens):
                 key = f"q_{categoria}_{idx}_{v}"
 
+                resp_previa = respostas_salvas.get(item["desc"], {}).get("resposta", "Conforme")
+                idx_radio = options_radio.index(resp_previa) if resp_previa in options_radio else 0
+
                 resp = st.radio(
                     label=item["desc"],
-                    options=["Conforme", "Não Conforme", "Não se aplica"],
-                    index=0,
+                    options=options_radio,
+                    index=idx_radio,
                     horizontal=True,
                     key=key,
                 )
@@ -581,10 +657,13 @@ with tab_formulario:
             for idx, item in enumerate(itens):
                 key = f"q_{categoria}_{idx}_{v}"
 
+                resp_previa = respostas_salvas.get(item["desc"], {}).get("resposta", "Conforme")
+                idx_radio = options_radio.index(resp_previa) if resp_previa in options_radio else 0
+
                 resp = st.radio(
                     label=item["desc"],
-                    options=["Conforme", "Não Conforme", "Não se aplica"],
-                    index=0,
+                    options=options_radio,
+                    index=idx_radio,
                     horizontal=True,
                     key=key,
                 )
@@ -634,10 +713,8 @@ with tab_formulario:
         st.markdown("---")
         descricao = st.text_area(
             label="Descrição / Observações Gerais *",
-            placeholder=(
-                "Descreva aqui os detalhes do atendimento, motivos e"
-                " principais observações..."
-            ),
+            value=payload_edicao.get("descricao", ""),
+            placeholder="Descreva aqui os detalhes do atendimento...",
             height=120,
             key=f"desc_{v}",
         )
@@ -645,16 +722,17 @@ with tab_formulario:
     st.markdown("---")
     b_col1, b_col2, b_col3 = st.columns([6, 2, 2])
 
-    if b_col2.button("❌ Cancelar", use_container_width=True, key=f"btn_cancel_{v}"):
+    if b_col2.button("❌ Limpar Form", use_container_width=True, key=f"btn_cancel_{v}"):
+        reset_formulario()
         st.session_state.notification = {
             "type": "warning",
             "message": "Formulário limpo com sucesso.",
-            "icon": "🧹"
+            "icon": "🧹",
         }
-        reset_formulario()
         st.rerun()
 
-    if b_col3.button("💾 Cadastrar / Salvar", use_container_width=True, key=f"btn_save_{v}"):
+    lbl_salvar = "🔄 Atualizar Registro" if st.session_state.editing_id else "💾 Cadastrar / Salvar"
+    if b_col3.button(lbl_salvar, use_container_width=True, key=f"btn_save_{v}"):
         if avaliador == "Selecione...":
             st.toast("Por favor, selecione um Avaliador!", icon="⚠️")
             st.error("Por favor, selecione um Avaliador antes de salvar!")
@@ -691,29 +769,62 @@ with tab_resultados:
     df_dados = buscar_registros()
 
     if not df_dados.empty:
+        # Exibição limpa da tabela principal
+        cols_visualizacao = [c for c in df_dados.columns if c != "respostas"]
         st.dataframe(
-            df_dados.drop(columns=["respostas"], errors="ignore"),
+            df_dados[cols_visualizacao],
             use_container_width=True,
             hide_index=True,
         )
 
-        with st.expander("🗑️ Excluir Registro"):
-            id_excluir = st.number_input("Informe o ID para excluir:", min_value=1, step=1)
-            if st.button("Confirmar Exclusão"):
-                try:
-                    excluir_registro(id_excluir)
-                    st.session_state.notification = {
-                        "type": "success",
-                        "message": f"Registro ID {id_excluir} excluído com sucesso!",
-                        "icon": "🗑️"
-                    }
-                    st.rerun()
-                except Exception as e:
-                    st.session_state.notification = {
-                        "type": "error",
-                        "message": f"Erro ao excluir o registro ID {id_excluir}: {e}",
-                        "icon": "❌"
-                    }
-                    st.rerun()
+        st.markdown("---")
+        st.markdown("### ⚙️ Ações nos Registros")
+
+        col_select, col_actions = st.columns([2, 3])
+
+        lista_ids = df_dados["id"].tolist()
+        id_selecionado = col_select.selectbox(
+            "Selecione um ID de Registro para gerenciar:",
+            options=lista_ids,
+            format_func=lambda x: f"ID #{x} - {df_dados[df_dados['id'] == x]['colaborador'].values[0]} ({df_dados[df_dados['id'] == x]['pontuacao'].values[0]} pts)",
+        )
+
+        col_btn_edit, col_btn_del, _ = col_actions.columns([1, 1, 1])
+
+        # AÇÃO 1: EDITAR REGISTRO
+        if col_btn_edit.button("✏️ Editar Registro", use_container_width=True):
+            registro = df_dados[df_dados["id"] == id_selecionado].iloc[0].to_dict()
+
+            st.session_state.editing_id = id_selecionado
+            st.session_state.edit_payload = registro
+            st.session_state.form_version += 1
+
+            st.session_state.notification = {
+                "type": "info",
+                "message": f"Registro #{id_selecionado} carregado no formulário para edição.",
+                "icon": "✏️",
+            }
+            st.rerun()
+
+        # AÇÃO 2: EXCLUIR REGISTRO
+        if col_btn_del.button("🗑️ Excluir Registro", use_container_width=True):
+            try:
+                excluir_registro(id_selecionado)
+                if st.session_state.editing_id == id_selecionado:
+                    reset_formulario()
+
+                st.session_state.notification = {
+                    "type": "success",
+                    "message": f"Registro ID #{id_selecionado} excluído com sucesso!",
+                    "icon": "🗑️",
+                }
+                st.rerun()
+            except Exception as e:
+                st.session_state.notification = {
+                    "type": "error",
+                    "message": f"Erro ao excluir o registro ID {id_selecionado}: {e}",
+                    "icon": "❌",
+                }
+                st.rerun()
     else:
         st.info("Nenhum registro de monitoria encontrado no Supabase.")
