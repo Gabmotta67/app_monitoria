@@ -2,7 +2,7 @@ import datetime
 import os
 import pandas as pd
 import streamlit as st
-from supabase import Client, create_client
+from supabase import create_client, Client
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO
@@ -107,8 +107,8 @@ exibir_notificacoes_pendentes()
 @st.cache_resource
 def get_supabase_client() -> Client:
     try:
-        url = "https://kgfbaomoxmmyfzzjlwys.supabase.co"
-        key = "sb_publishable_HW6-_YedgZMlwGj6lKFwSQ_qez-bLEz"
+        url = "https://jevgwcavrxhyhmoodxyb.supabase.co"
+        key = "sb_publishable_hKahILaV2iOtDid3A-tOKA_hXp8pov5"
         return create_client(url, key)
     except Exception as e:
         st.error(f"Erro ao conectar com o Supabase: {e}")
@@ -123,7 +123,7 @@ def carregar_dados_colaboradores():
             return ["Selecione..."], {}
 
         response = (
-            supabase.table("bd_pessoas")
+            supabase.table("db_pessoas")
             .select("nome_base_volumetria_power_bi, supervisor")
             .execute()
         )
@@ -139,9 +139,7 @@ def carregar_dados_colaboradores():
         ):
             df_temp = df_temp.dropna(subset=["nome_base_volumetria_power_bi"])
             df_temp["nome_clean"] = (
-                df_temp["nome_base_volumetria_power_bi"]
-                .astype(str)
-                .str.strip()
+                df_temp["nome_base_volumetria_power_bi"].astype(str).str.strip()
             )
             df_temp["supervisor_clean"] = (
                 df_temp["supervisor"].fillna("").astype(str).str.strip()
@@ -428,7 +426,7 @@ CRITERIOS_OBLIGATORIOS = [
 
 
 # ==========================================
-# MODAIS DE CONFIRMAÇÃO (DIALOGS)
+# MODAL DE CONFIRMAÇÃO DIALOG
 # ==========================================
 @st.dialog("Confirmar Gravação da Monitoria")
 def modal_confirmacao():
@@ -474,38 +472,6 @@ def modal_confirmacao():
         st.rerun()
 
 
-@st.dialog("⚠️ Confirmar Exclusão")
-def modal_confirmar_exclusao(id_para_excluir):
-    st.warning(
-        f"Tem certeza que deseja excluir permanentemente o registro **ID #{id_para_excluir}**?"
-    )
-    st.write("Esta ação não poderá ser desfeita.")
-
-    col_sim, col_nao = st.columns(2)
-    if col_sim.button("🔴 Sim, Excluir", use_container_width=True):
-        try:
-            excluir_registro(id_para_excluir)
-            if st.session_state.editing_id == id_para_excluir:
-                reset_formulario()
-
-            st.session_state.notification = {
-                "type": "success",
-                "message": f"Registro ID #{id_para_excluir} excluído com sucesso!",
-                "icon": "🗑️",
-            }
-            st.rerun()
-        except Exception as e:
-            st.session_state.notification = {
-                "type": "error",
-                "message": f"Erro ao excluir o registro ID {id_para_excluir}: {e}",
-                "icon": "❌",
-            }
-            st.rerun()
-
-    if col_nao.button("Cancelar", use_container_width=True):
-        st.rerun()
-
-
 # ==========================================
 # NAVEGAÇÃO DE ABAS
 # ==========================================
@@ -528,9 +494,7 @@ with tab_formulario:
         st.info(
             f"✏️ **Modo Edição Ativo:** Editando o registro **ID #{st.session_state.editing_id}**"
         )
-        if st.button(
-            "⬅️ Sair da Edição e Limpar Formulário", key=f"btn_cancel_edit_{v}"
-        ):
+        if st.button("⬅️ Sair da Edição e Limpar Formulário", key=f"btn_cancel_edit_{v}"):
             reset_formulario()
             st.session_state.notification = {
                 "type": "info",
@@ -553,85 +517,50 @@ with tab_formulario:
         "LAURA MARIA ZAMPIERI",
     ]
 
-    val_avaliador = payload_edicao.get(
-        "avaliador", "JEAN ROBERTO DA SILVA DOS SANTOS"
-    )
-    idx_avaliador = (
-        avaliadores.index(val_avaliador) if val_avaliador in avaliadores else 1
-    )
+    val_avaliador = payload_edicao.get("avaliador", "JEAN ROBERTO DA SILVA DOS SANTOS")
+    idx_avaliador = avaliadores.index(val_avaliador) if val_avaliador in avaliadores else 1
 
-    avaliador = l1_col1.selectbox(
-        "Avaliador *:", avaliadores, index=idx_avaliador, key=f"avaliador_{v}"
-    )
+    avaliador = l1_col1.selectbox("Avaliador *:", avaliadores, index=idx_avaliador, key=f"avaliador_{v}")
 
     val_colaborador = payload_edicao.get("colaborador", "Selecione...")
-    idx_colaborador = (
-        colaboradores.index(val_colaborador)
-        if val_colaborador in colaboradores
-        else 0
-    )
+    idx_colaborador = colaboradores.index(val_colaborador) if val_colaborador in colaboradores else 0
 
-    colaborador = l1_col2.selectbox(
-        "Colaborador *:",
-        colaboradores,
-        index=idx_colaborador,
-        key=f"colaborador_{v}",
-    )
+    colaborador = l1_col2.selectbox("Colaborador *:", colaboradores, index=idx_colaborador, key=f"colaborador_{v}")
 
-    gestor_dinamico = payload_edicao.get(
-        "gestor", mapa_supervisores.get(colaborador, "DANIEL PIMENTA NEVES")
-    )
-    gestor = l1_col3.text_input(
-        "Gestor:", value=gestor_dinamico, key=f"gestor_{v}_{colaborador}"
-    )
+    gestor_dinamico = payload_edicao.get("gestor", mapa_supervisores.get(colaborador, "DANIEL PIMENTA NEVES"))
+    gestor = l1_col3.text_input("Gestor:", value=gestor_dinamico, key=f"gestor_{v}_{colaborador}")
 
     l2_col1, l2_col2, l2_col3, l2_col4 = st.columns([1.5, 1.5, 1, 1])
 
-    operacao = l2_col1.text_input(
-        "Operação:", value=payload_edicao.get("operacao", "PME"), key=f"operacao_{v}"
-    )
+    operacao = l2_col1.text_input("Operação:", value=payload_edicao.get("operacao", "PME"), key=f"operacao_{v}")
 
     opcoes_duracao = ["00:05", "00:10", "00:15", "00:20", "00:30"]
     val_duracao = payload_edicao.get("duracao", "00:05")
-    idx_duracao = (
-        opcoes_duracao.index(val_duracao)
-        if val_duracao in opcoes_duracao
-        else 0
-    )
+    idx_duracao = opcoes_duracao.index(val_duracao) if val_duracao in opcoes_duracao else 0
 
-    duracao = l2_col2.selectbox(
-        "Duração:", opcoes_duracao, index=idx_duracao, key=f"duracao_{v}"
-    )
+    duracao = l2_col2.selectbox("Duração:", opcoes_duracao, index=idx_duracao, key=f"duracao_{v}")
 
     opcoes_hr = [f"{h:02d}" for h in range(24)]
     val_hr = str(payload_edicao.get("hora_inicio", "09")).zfill(2)
     idx_hr = opcoes_hr.index(val_hr) if val_hr in opcoes_hr else 9
 
-    hr_inicio = l2_col3.selectbox(
-        "Hora Início:", opcoes_hr, index=idx_hr, key=f"hr_inicio_{v}"
-    )
+    hr_inicio = l2_col3.selectbox("Hora Início:", opcoes_hr, index=idx_hr, key=f"hr_inicio_{v}")
 
     opcoes_min = [f"{m:02d}" for m in range(60)]
     val_min = str(payload_edicao.get("minuto_inicio", "00")).zfill(2)
     idx_min = opcoes_min.index(val_min) if val_min in opcoes_min else 0
 
-    min_inicio = l2_col4.selectbox(
-        "Minuto Início:", opcoes_min, index=idx_min, key=f"min_inicio_{v}"
-    )
+    min_inicio = l2_col4.selectbox("Minuto Início:", opcoes_min, index=idx_min, key=f"min_inicio_{v}")
 
     l3_col1, l3_col2, l3_col3 = st.columns(3)
 
     dt_lig_val = (
-        datetime.datetime.strptime(
-            payload_edicao["data_ligacao"], "%Y-%m-%d"
-        ).date()
+        datetime.datetime.strptime(payload_edicao["data_ligacao"], "%Y-%m-%d").date()
         if "data_ligacao" in payload_edicao and payload_edicao["data_ligacao"]
         else datetime.date.today()
     )
     dt_aud_val = (
-        datetime.datetime.strptime(
-            payload_edicao["data_audicao"], "%Y-%m-%d"
-        ).date()
+        datetime.datetime.strptime(payload_edicao["data_audicao"], "%Y-%m-%d").date()
         if "data_audicao" in payload_edicao and payload_edicao["data_audicao"]
         else datetime.date.today()
     )
@@ -653,9 +582,7 @@ with tab_formulario:
     val_canal = payload_edicao.get("canal", "Interação WPP")
     idx_canal = opcoes_canal.index(val_canal) if val_canal in opcoes_canal else 0
 
-    canal = l3_col3.selectbox(
-        "Canal:", opcoes_canal, index=idx_canal, key=f"canal_{v}"
-    )
+    canal = l3_col3.selectbox("Canal:", opcoes_canal, index=idx_canal, key=f"canal_{v}")
 
     l4_col1, l4_col2, l4_col3 = st.columns([1.5, 1.5, 3])
     telefone = l4_col1.text_input(
@@ -695,20 +622,12 @@ with tab_formulario:
                 f'<div class="category-header">{categoria}</div>',
                 unsafe_allow_html=True,
             )
-            itens = [
-                i for i in CRITERIOS_OBLIGATORIOS if i["cat"] == categoria
-            ]
+            itens = [i for i in CRITERIOS_OBLIGATORIOS if i["cat"] == categoria]
             for idx, item in enumerate(itens):
                 key = f"q_{categoria}_{idx}_{v}"
 
-                resp_previa = respostas_salvas.get(item["desc"], {}).get(
-                    "resposta", "Conforme"
-                )
-                idx_radio = (
-                    options_radio.index(resp_previa)
-                    if resp_previa in options_radio
-                    else 0
-                )
+                resp_previa = respostas_salvas.get(item["desc"], {}).get("resposta", "Conforme")
+                idx_radio = options_radio.index(resp_previa) if resp_previa in options_radio else 0
 
                 resp = st.radio(
                     label=item["desc"],
@@ -735,20 +654,12 @@ with tab_formulario:
                 unsafe_allow_html=True,
             )
 
-            itens = [
-                i for i in CRITERIOS_OBLIGATORIOS if i["cat"] == categoria
-            ]
+            itens = [i for i in CRITERIOS_OBLIGATORIOS if i["cat"] == categoria]
             for idx, item in enumerate(itens):
                 key = f"q_{categoria}_{idx}_{v}"
 
-                resp_previa = respostas_salvas.get(item["desc"], {}).get(
-                    "resposta", "Conforme"
-                )
-                idx_radio = (
-                    options_radio.index(resp_previa)
-                    if resp_previa in options_radio
-                    else 0
-                )
+                resp_previa = respostas_salvas.get(item["desc"], {}).get("resposta", "Conforme")
+                idx_radio = options_radio.index(resp_previa) if resp_previa in options_radio else 0
 
                 resp = st.radio(
                     label=item["desc"],
@@ -781,9 +692,7 @@ with tab_formulario:
                 (soma_pontos_obtidos / soma_pontos_possiveis) * 100, 2
             )
 
-        status_resultado = (
-            "Adequado" if nota_final >= 85 else "Inadequado"
-        )
+        status_resultado = "Adequado" if nota_final >= 85 else "Inadequado"
         emoji_status = "😊" if status_resultado == "Adequado" else "😞"
         class_status = (
             "status-adequadas"
@@ -814,9 +723,7 @@ with tab_formulario:
     st.markdown("---")
     b_col1, b_col2, b_col3 = st.columns([6, 2, 2])
 
-    if b_col2.button(
-        "❌ Limpar Form", use_container_width=True, key=f"btn_cancel_{v}"
-    ):
+    if b_col2.button("❌ Limpar Form", use_container_width=True, key=f"btn_cancel_{v}"):
         reset_formulario()
         st.session_state.notification = {
             "type": "warning",
@@ -825,11 +732,7 @@ with tab_formulario:
         }
         st.rerun()
 
-    lbl_salvar = (
-        "🔄 Atualizar Registro"
-        if st.session_state.editing_id
-        else "💾 Cadastrar / Salvar"
-    )
+    lbl_salvar = "🔄 Atualizar Registro" if st.session_state.editing_id else "💾 Cadastrar / Salvar"
     if b_col3.button(lbl_salvar, use_container_width=True, key=f"btn_save_{v}"):
         if avaliador == "Selecione...":
             st.toast("Por favor, selecione um Avaliador!", icon="⚠️")
@@ -867,19 +770,8 @@ with tab_resultados:
     df_dados = buscar_registros()
 
     if not df_dados.empty:
-        # Botão de exportação para Backup rápido em CSV
-        csv_backup = df_dados.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Baixar Backup Atualizado (CSV)",
-            data=csv_backup,
-            file_name=f"backup_monitoria_{datetime.date.today()}.csv",
-            mime="text/csv",
-        )
-
         # Exibição limpa da tabela principal
-        cols_visualizacao = [
-            c for c in df_dados.columns if c != "respostas"
-        ]
+        cols_visualizacao = [c for c in df_dados.columns if c != "respostas"]
         st.dataframe(
             df_dados[cols_visualizacao],
             use_container_width=True,
@@ -902,9 +794,7 @@ with tab_resultados:
 
         # AÇÃO 1: EDITAR REGISTRO
         if col_btn_edit.button("✏️ Editar Registro", use_container_width=True):
-            registro = (
-                df_dados[df_dados["id"] == id_selecionado].iloc[0].to_dict()
-            )
+            registro = df_dados[df_dados["id"] == id_selecionado].iloc[0].to_dict()
 
             st.session_state.editing_id = id_selecionado
             st.session_state.edit_payload = registro
@@ -917,9 +807,25 @@ with tab_resultados:
             }
             st.rerun()
 
-        # AÇÃO 2: EXCLUIR REGISTRO (DISPARA MODAL SEGURO)
+        # AÇÃO 2: EXCLUIR REGISTRO
         if col_btn_del.button("🗑️ Excluir Registro", use_container_width=True):
-            modal_confirmar_exclusao(id_selecionado)
+            try:
+                excluir_registro(id_selecionado)
+                if st.session_state.editing_id == id_selecionado:
+                    reset_formulario()
 
+                st.session_state.notification = {
+                    "type": "success",
+                    "message": f"Registro ID #{id_selecionado} excluído com sucesso!",
+                    "icon": "🗑️",
+                }
+                st.rerun()
+            except Exception as e:
+                st.session_state.notification = {
+                    "type": "error",
+                    "message": f"Erro ao excluir o registro ID {id_selecionado}: {e}",
+                    "icon": "❌",
+                }
+                st.rerun()
     else:
         st.info("Nenhum registro de monitoria encontrado no Supabase.")
