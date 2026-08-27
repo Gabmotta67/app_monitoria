@@ -335,7 +335,7 @@ CRITERIOS_OBLIGATORIOS = [
     {
         "cat": "Processos",
         "desc": "Operador(a) realizou a confirmação de telefone e e-mail cadastrados?",
-        "peso": 0.0,
+        "peso": 4.0,
         "critico": False,
     },
     {
@@ -534,11 +534,11 @@ with tab_formulario:
 
     operacao = l2_col1.text_input("Operação:", value=payload_edicao.get("operacao", "PME"), key=f"operacao_{v}")
 
-    opcoes_duracao = ["00:05", "00:10", "00:15", "00:20", "00:30"]
+    opcoes_duracao = ["00:01", "00:02", "00:03", "00:04", "00:05", "00:06", "00:07", "00:08", "00:09", "00:10", "00:11", "00:12", "00:13", "00:14", "00:15", "00:16", "00:17", "00:18", "00:19", "00:20", "00:21", "00:22", "00:23", "00:24", "00:25", "00:26", "00:27", "00:28", "00:29", "00:30", "00:31", "00:32", "00:33", "00:34", "00:35", "00:36", "00:37", "00:38", "00:39", "00:40", "00:41", "00:42", "00:43", "00:44", "00:45", "00:46", "00:47", "00:48", "00:49", "00:50", "00:51", "00:52", "00:53", "00:54", "00:55", "00:56", "00:57", "00:58", "00:59", "01:00"]
     val_duracao = payload_edicao.get("duracao", "00:05")
     idx_duracao = opcoes_duracao.index(val_duracao) if val_duracao in opcoes_duracao else 0
 
-    duracao = l2_col2.selectbox("Duração:", opcoes_duracao, index=idx_duracao, key=f"duracao_{v}")
+    duracao = l2_col2.selectbox("Duração (Min):", opcoes_duracao, index=idx_duracao, key=f"duracao_{v}")
 
     opcoes_hr = [f"{h:02d}" for h in range(24)]
     val_hr = str(payload_edicao.get("hora_inicio", "09")).zfill(2)
@@ -566,7 +566,7 @@ with tab_formulario:
     )
 
     data_ligacao = l3_col1.date_input(
-        label="Data da Ligação *",
+        label="Data da Interação *",
         value=dt_lig_val,
         format="DD/MM/YYYY",
         key=f"dt_ligacao_{v}",
