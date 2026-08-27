@@ -305,7 +305,7 @@ CRITERIOS_OBLIGATORIOS = [
     {
         "cat": "Processos",
         "desc": "Operador(a) orientou corretamente o cliente quanto à documentação necessária e ao envio/anexo na interação via chat?",
-        "peso": 6.0,
+        "peso": 4.0,
         "critico": False,
     },
     {
@@ -329,7 +329,7 @@ CRITERIOS_OBLIGATORIOS = [
     {
         "cat": "Processos",
         "desc": "Operador(a) quando solicitado cancelamento, realiza o processo corretamente?",
-        "peso": 6.0,
+        "peso": 4.0,
         "critico": False,
     },
     {
