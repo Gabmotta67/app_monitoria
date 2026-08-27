@@ -238,7 +238,7 @@ def excluir_registro(id_registro):
 CRITERIOS_OBLIGATORIOS = [
     {
         "cat": "Habilidades de Comunicação",
-        "desc": "Operador(a) atende o cliente dentro do tempo estabelecido (3 min/ 2 min/1 min)",
+        "desc": "Operador(a) atende o cliente dentro do tempo estabelecido",
         "peso": 5.0,
         "critico": False,
     },
@@ -358,7 +358,7 @@ CRITERIOS_OBLIGATORIOS = [
     },
     {
         "cat": "Erros Críticos",
-        "desc": "Operador (a) realizou interação via Chat? ( superior a 6 minutos)",
+        "desc": "Operador(a) abandonou a interação via Chat, ocasionando envio de mensagens automáticas e finalização sistêmica da interação sem prestar atendimento?",
         "peso": 100.0,
         "critico": True,
     },
